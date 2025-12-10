@@ -4,7 +4,7 @@
 
 ## About
 📱 The **Telon GSM-SIP Gateway** is an Android application that acts as a bidirectional bridge between GSM telephony and SIP (Session Initiation Protocol). It enables seamless integration of local GSM calls with SIP-based telephony systems, allowing users to make and receive calls through SIP infrastructure while using GSM hardware.
-
+     
 ---
 
 ## How It Works
