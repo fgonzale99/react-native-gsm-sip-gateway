@@ -1,4 +1,4 @@
-name: Build Android
+name: Build Android RN 0.80
 
 on:
   push:
@@ -8,6 +8,12 @@ on:
 jobs:
   build_android:
     runs-on: ubuntu-latest
+    
+    env:
+      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      NODE_OPTIONS: "--max-old-space-size=4096"
     
     steps:
       - name: Checkout Repository
@@ -24,39 +30,96 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       
-      - name: Setup Android SDK
+      - name: Setup Android SDK for RN 0.80
         uses: android-actions/setup-android@v3
+        with:
+          api-level: 34  # RN 0.80 recomienda API 34
+          build-tools: 34.0.0
+          ndk: 26.1.10909125  # NDK requerido para RN 0.80
+          cmake: 3.22.1
       
-      - name: Clean and prepare project
+      - name: Accept Android Licenses
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+      
+      - name: Clean npm cache and install
         run: |
           cd telon-gateway-app
-          # Remove lock file and node_modules
-          rm -rf node_modules package-lock.json
+          # Limpiar cache
+          npm cache clean --force
           
-          # Update package.json for RN 0.72
-          sed -i 's/"react-native": "0.80.0"/"react-native": "0.72.9"/' package.json
-          sed -i 's/"react": "19.1.0"/"react": "18.2.0"/' package.json
+          # Verificar que tenemos las versiones correctas
+          echo "React Native version:"
+          grep '"react-native"' package.json
+          echo "React version:"
+          grep '"react"' package.json
           
-          # Install dependencies
+          # Instalar dependencias
           npm install --legacy-peer-deps
       
-      - name: Create local.properties
+      - name: Install React Native CLI for 0.80
+        run: |
+          cd telon-gateway-app
+          npm install --save-dev @react-native-community/cli@latest --legacy-peer-deps
+      
+      - name: Setup Android local.properties
         run: |
           cd telon-gateway-app/android
           echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ndk.dir=$ANDROID_HOME/ndk/26.1.10909125" >> local.properties
+      
+      - name: Update Gradle for RN 0.80
+        run: |
+          cd telon-gateway-app/android
+          # Actualizar gradle-wrapper.properties para Gradle 8.3
+          sed -i 's/gradle-[0-9\.]*-all.zip/gradle-8.3-all.zip/' gradle/wrapper/gradle-wrapper.properties
+          sed -i 's/distributionUrl=.*/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-8.3-all.zip/' gradle/wrapper/gradle-wrapper.properties
+      
+      - name: Update build.gradle for AGP 8.0
+        run: |
+          cd telon-gateway-app/android
+          # Actualizar build.gradle para usar AGP 8.0.0
+          sed -i 's/com.android.tools.build:gradle:[0-9\.]*/com.android.tools.build:gradle:8.0.0/' build.gradle
+          
+          # Actualizar app/build.gradle
+          cd app
+          # Asegurar compileSdkVersion 34
+          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/' build.gradle
+          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 34/' build.gradle
+          sed -i 's/buildToolsVersion "[^"]*"/buildToolsVersion "34.0.0"/' build.gradle
       
       - name: Make gradlew executable
         run: |
           cd telon-gateway-app/android
           chmod +x gradlew
       
+      - name: Clean Gradle
+        run: |
+          cd telon-gateway-app/android
+          ./gradlew clean --no-daemon
+      
       - name: Build Android Release Bundle
         run: |
           cd telon-gateway-app/android
-          ./gradlew bundleRelease
+          ./gradlew bundleRelease --no-daemon --stacktrace
+        env:
+          ORG_GRADLE_PROJECT_keystore_password: ${{ secrets.KEYSTORE_PASSWORD }}
       
       - name: Upload Bundle Artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: android-bundle
+          name: android-bundle-rn80
           path: telon-gateway-app/android/app/build/outputs/bundle/release/*.aab
+          retention-days: 7
+      
+      - name: Upload Build Logs on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs-rn80
+          path: |
+            telon-gateway-app/android/**/build/reports/**/*.html
+            telon-gateway-app/android/**/build/outputs/**/*.txt
+            telon-gateway-app/npm-debug.log
+          retention-days: 7
