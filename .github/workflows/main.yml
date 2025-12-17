@@ -1,4 +1,4 @@
-name: Build Telon GSM-SIP Gateway (Historical)
+name: Build Telon GSM-SIP Gateway
 
 on:
   push:
@@ -8,7 +8,7 @@ on:
 
 jobs:
   build_android:
-    runs-on: ubuntu-20.04  # Ubuntu 20.04 era estándar cuando RN 0.72 era común
+    runs-on: ubuntu-22.04  # Cambiado de ubuntu-20.04 a ubuntu-22.04
     
     env:
       JAVA_HOME: /usr/lib/jvm/java-11-openjdk-amd64
@@ -22,45 +22,30 @@ jobs:
         with:
           path: telon-gsm-sip-gateway
       
-      - name: Setup Node.js 16 (LTS para RN 0.72)
+      - name: Setup Node.js 18 (compatible con Ubuntu 22.04)
         uses: actions/setup-node@v4
         with:
-          node-version: 16.20.2
+          node-version: 18
           cache: 'npm'
           cache-dependency-path: telon-gsm-sip-gateway/package-lock.json
       
-      - name: Set up JDK 11 (compatible con Android antiguo)
+      - name: Set up JDK 11
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '11'
       
-      - name: Setup Android SDK Tools antiguos
-        run: |
-          # Descargar command line tools específicos (versión 8512546 = 2023)
-          wget -q https://dl.google.com/android/repository/commandlinetools-linux-8512546_latest.zip
-          mkdir -p $ANDROID_HOME/cmdline-tools
-          unzip -q commandlinetools-linux-8512546_latest.zip -d $ANDROID_HOME/cmdline-tools
-          mv $ANDROID_HOME/cmdline-tools/cmdline-tools $ANDROID_HOME/cmdline-tools/latest
-          rm commandlinetools-linux-8512546_latest.zip
-          
-          # Configurar PATH
-          echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
-          echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 31
+          build-tools: 30.0.3
+          ndk: 21.4.7075529
+          cmake: 3.18.1
       
-      - name: Install Android SDK para RN 0.72
+      - name: Accept Android Licenses
         run: |
-          # Aceptar licencias
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null 2>&1 || true
-          
-          # Instalar componentes específicos para RN 0.72
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager \
-            "platforms;android-31" \
-            "build-tools;30.0.3" \
-            "platform-tools" \
-            "ndk;21.4.7075529" \
-            "cmake;3.18.1" \
-            --verbose
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
       
       - name: Clone Native Dependencies
         run: |
@@ -68,147 +53,96 @@ jobs:
           mkdir -p dependencies
           cd dependencies
           
+          echo "=== Clonando dependencias nativas ==="
+          
           # Clonar react-native-tele
-          if [ ! -d "react-native-tele" ]; then
-            git clone https://github.com/telon-org/react-native-tele.git || echo "react-native-tele no disponible"
-          fi
+          git clone https://github.com/telon-org/react-native-tele.git || echo "⚠️ react-native-tele no disponible"
           
           # Clonar react-native-sip2
-          if [ ! -d "react-native-sip2" ]; then
-            git clone https://github.com/telon-org/react-native-sip2.git || echo "react-native-sip2 no disponible"
-          fi
+          git clone https://github.com/telon-org/react-native-sip2.git || echo "⚠️ react-native-sip2 no disponible"
           
           # Clonar react-native-replace-dialer
-          if [ ! -d "react-native-replace-dialer" ]; then
-            git clone https://github.com/telon-org/react-native-replace-dialer.git || echo "react-native-replace-dialer no disponible"
-          fi
+          git clone https://github.com/telon-org/react-native-replace-dialer.git || echo "⚠️ react-native-replace-dialer no disponible"
           
-          # Listar lo que se clonó
+          echo "=== Dependencias clonadas ==="
           ls -la
       
-      - name: Prepare Project Structure
+      - name: Prepare Project
         run: |
-          # Mover al directorio del proyecto
           cd telon-gsm-sip-gateway
           
-          # Verificar estructura actual
-          echo "=== Estructura actual ==="
+          echo "=== Estructura del proyecto ==="
           ls -la
-          echo ""
-          echo "=== package.json actual ==="
-          cat package.json | head -50
           
-          # Guardar package.json original si existe
+          echo "=== package.json original ==="
           if [ -f "package.json" ]; then
-            cp package.json package.json.original
+            cat package.json
+          else
+            echo "❌ No hay package.json"
           fi
       
-      - name: Create Historical package.json for RN 0.72
+      - name: Update package.json for React Native 0.72
         run: |
           cd telon-gsm-sip-gateway
           
-          # Crear un package.json compatible con RN 0.72
-          cat > package.json << 'EOF'
-          {
-            "name": "telon-gsm-sip-gateway",
-            "version": "1.0.0",
-            "private": true,
-            "scripts": {
-              "android": "react-native run-android",
-              "ios": "react-native run-ios",
-              "start": "react-native start",
-              "test": "jest",
-              "lint": "eslint ."
-            },
-            "dependencies": {
-              "react": "18.2.0",
-              "react-native": "0.72.9",
-              "react-native-tele": "file:../dependencies/react-native-tele",
-              "react-native-sip2": "file:../dependencies/react-native-sip2",
-              "react-native-replace-dialer": "file:../dependencies/react-native-replace-dialer"
-            },
-            "devDependencies": {
-              "@babel/core": "^7.20.0",
-              "@babel/preset-env": "^7.20.0",
-              "@babel/runtime": "^7.20.0",
-              "@react-native-community/cli": "^11.3.6",
-              "@react-native-community/cli-platform-android": "^11.3.6",
-              "babel-jest": "^29.2.0",
-              "jest": "^29.2.0",
-              "metro-react-native-babel-preset": "0.76.8",
-              "react-test-renderer": "18.2.0"
-            },
-            "jest": {
-              "preset": "react-native"
-            }
-          }
-          EOF
-          
-          echo "=== Nuevo package.json creado ==="
-          cat package.json
+          if [ -f "package.json" ]; then
+            # Backup del original
+            cp package.json package.json.backup
+            
+            # Actualizar React Native y React
+            sed -i 's/"react-native": "0.80.0"/"react-native": "0.72.9"/' package.json
+            sed -i 's/"react": "19.1.0"/"react": "18.2.0"/' package.json
+            
+            echo "=== package.json actualizado ==="
+            cat package.json
+          else
+            echo "❌ No se pudo actualizar package.json - archivo no encontrado"
+          fi
       
       - name: Clean and Install Dependencies
         run: |
           cd telon-gsm-sip-gateway
           
-          # Limpiar completamente
-          rm -rf node_modules package-lock.json yarn.lock
+          echo "=== Limpiando node_modules ==="
+          rm -rf node_modules package-lock.json
           
-          # Instalar dependencias
-          echo "Instalando dependencias..."
-          npm install --legacy-peer-deps --verbose
+          echo "=== Instalando dependencias ==="
+          npm install --legacy-peer-deps
           
-          # Verificar instalación
-          echo "=== Dependencias instaladas ==="
-          npm list --depth=0
-      
-      - name: Link Native Dependencies
-        run: |
-          cd telon-gsm-sip-gateway
-          
-          # Intentar linkear dependencias nativas si existen
-          if [ -d "../dependencies/react-native-tele" ]; then
-            echo "=== Linkeando react-native-tele ==="
-            npm link ../dependencies/react-native-tele || echo "Link falló, continuando..."
-          fi
-          
-          if [ -d "../dependencies/react-native-sip2" ]; then
-            echo "=== Linkeando react-native-sip2 ==="
-            npm link ../dependencies/react-native-sip2 || echo "Link falló, continuando..."
-          fi
-          
-          if [ -d "../dependencies/react-native-replace-dialer" ]; then
-            echo "=== Linkeando react-native-replace-dialer ==="
-            npm link ../dependencies/react-native-replace-dialer || echo "Link falló, continuando..."
-          fi
+          echo "=== Instalando CLI específico para RN 0.72 ==="
+          npm install --save-dev @react-native-community/cli-platform-android@11.3.6 --legacy-peer-deps
       
       - name: Configure Android Project
         run: |
           cd telon-gsm-sip-gateway
           
-          # Crear android/local.properties si no existe
+          echo "=== Configurando Android ==="
+          
+          # Crear local.properties si no existe
           mkdir -p android
           echo "sdk.dir=$ANDROID_HOME" > android/local.properties
           echo "ndk.dir=$ANDROID_HOME/ndk/21.4.7075529" >> android/local.properties
           
-          # Configurar gradle para RN 0.72
+          # Configurar gradle para RN 0.72 si existe build.gradle
           if [ -f "android/build.gradle" ]; then
-            # Asegurar AGP 7.4.0
+            echo "Configurando android/build.gradle..."
             sed -i 's/com.android.tools.build:gradle:[0-9\.]*/com.android.tools.build:gradle:7.4.0/' android/build.gradle
           fi
           
-          # Configurar gradle-wrapper.properties
-          if [ -f "android/gradle/wrapper/gradle-wrapper.properties" ]; then
-            sed -i 's/distributionUrl=.*/distributionUrl=https\:\/\/services.gradle.org\/distributions\/gradle-7.5-all.zip/' android/gradle/wrapper/gradle-wrapper.properties
-          fi
-          
-          # Configurar app/build.gradle
+          # Configurar app/build.gradle si existe
           if [ -f "android/app/build.gradle" ]; then
-            # Asegurar versiones compatibles
-            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 31/' android/app/build.gradle
-            sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 31/' android/app/build.gradle
-            sed -i 's/buildToolsVersion "[^"]*"/buildToolsVersion "30.0.3"/' android/app/build.gradle
-            sed -i 's/minSdkVersion [0-9]*/minSdkVersion 21/' android/app/build.gradle
+            echo "Configurando android/app/build.gradle..."
+            # Asegurar compileSdkVersion
+            sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 31/' android/app/build.gradle || \
+              sed -i '/android {/a\    compileSdkVersion 31' android/app/build.gradle
+            
+            # Asegurar targetSdkVersion
+            sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 31/' android/app/build.gradle || \
+              sed -i '/compileSdkVersion/a\    targetSdkVersion 31' android/app/build.gradle
+            
+            # Asegurar buildToolsVersion
+            sed -i 's/buildToolsVersion "[^"]*"/buildToolsVersion "30.0.3"/' android/app/build.gradle || \
+              sed -i '/targetSdkVersion/a\    buildToolsVersion "30.0.3"' android/app/build.gradle
           fi
       
       - name: Create Metro Config
@@ -239,40 +173,37 @@ jobs:
             };
           })();
           EOF
-      
-      - name: Create Babel Config
-        run: |
-          cd telon-gsm-sip-gateway
           
-          cat > babel.config.js << 'EOF'
-          module.exports = {
-            presets: ['module:metro-react-native-babel-preset'],
-          };
-          EOF
+          echo "=== metro.config.js creado ==="
+          cat metro.config.js
       
       - name: Make Gradlew Executable
         run: |
           cd telon-gsm-sip-gateway/android
-          chmod +x gradlew || echo "gradlew no encontrado"
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+            echo "✅ gradlew hecho ejecutable"
+          else
+            echo "⚠️ gradlew no encontrado"
+          fi
       
-      - name: Build Android Release
+      - name: Build Android APK
         run: |
           cd telon-gsm-sip-gateway/android
           
-          # Limpiar
-          ./gradlew clean || echo "Clean falló, continuando..."
+          echo "=== Limpiando proyecto ==="
+          ./gradlew clean || echo "⚠️ Clean falló, continuando..."
           
-          # Construir APK release
-          echo "=== Construyendo APK Release ==="
-          ./gradlew assembleRelease --stacktrace --info
+          echo "=== Construyendo APK Debug (para prueba) ==="
+          ./gradlew assembleDebug --stacktrace
           
-          # Verificar si se construyó
-          if [ -f "app/build/outputs/apk/release/app-release.apk" ]; then
-            echo "✅ APK construido exitosamente"
-            ls -lh app/build/outputs/apk/release/
+          echo "=== Verificando build ==="
+          if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "✅ APK Debug construido exitosamente"
+            ls -lh app/build/outputs/apk/debug/
           else
-            echo "❌ APK no encontrado, buscando alternativas..."
-            find . -name "*.apk" -type f | head -10
+            echo "❌ APK Debug no encontrado"
+            find . -name "*.apk" -type f 2>/dev/null || echo "No se encontraron APKs"
           fi
       
       - name: Upload APK Artifact
@@ -281,10 +212,9 @@ jobs:
           name: telon-gateway-apk
           path: |
             telon-gsm-sip-gateway/android/app/build/outputs/apk/**/*.apk
-            telon-gsm-sip-gateway/android/app/build/outputs/bundle/**/*.aab
-          retention-days: 90
+          retention-days: 7
       
-      - name: Upload Build Logs
+      - name: Upload Build Logs on Failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
@@ -292,5 +222,4 @@ jobs:
           path: |
             telon-gsm-sip-gateway/android/**/build/reports/**/*
             telon-gsm-sip-gateway/npm-debug.log
-            telon-gsm-sip-gateway/android/gradle.log
-          retention-days: 30
+          retention-days: 7
