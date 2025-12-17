@@ -97,15 +97,46 @@ jobs:
           EOF
         working-directory: telon-gateway-app
       
-      - name: Verify native_modules.gradle exists
+      - name: Check and fix settings.gradle
         run: |
-          if [ ! -f "node_modules/@react-native-community/cli-platform-android/native_modules.gradle" ]; then
-            echo "ERROR: native_modules.gradle not found!"
-            echo "Checking if @react-native-community/cli-platform-android is installed..."
-            ls -la node_modules/@react-native-community/ || echo "Directory not found"
-            exit 1
+          echo "Current settings.gradle:"
+          cat android/settings.gradle
+          echo "---"
+          
+          # Check if native_modules.gradle exists
+          if [ -f "node_modules/@react-native-community/cli-platform-android/native_modules.gradle" ]; then
+            echo "✓ native_modules.gradle found in cli-platform-android"
+          else
+            echo "✗ native_modules.gradle NOT found in cli-platform-android"
+            echo "Checking alternative locations..."
+            
+            # Try to find it
+            NATIVE_MODULES=$(find node_modules -name "native_modules.gradle" 2>/dev/null | head -n 1)
+            
+            if [ -n "$NATIVE_MODULES" ]; then
+              echo "✓ Found at: $NATIVE_MODULES"
+              
+              # Update settings.gradle with correct path
+              RELATIVE_PATH=$(realpath --relative-to=android "$NATIVE_MODULES")
+              echo "Updating settings.gradle to use: $RELATIVE_PATH"
+              
+              sed -i "s|@react-native-community/cli-platform-android/native_modules.gradle|$RELATIVE_PATH|g" android/settings.gradle
+              
+              echo "Updated settings.gradle:"
+              cat android/settings.gradle
+            else
+              echo "✗ native_modules.gradle not found anywhere!"
+              echo "Installing @react-native-community/cli-platform-android explicitly..."
+              npm install --save-dev @react-native-community/cli-platform-android@latest --legacy-peer-deps
+              
+              if [ -f "node_modules/@react-native-community/cli-platform-android/native_modules.gradle" ]; then
+                echo "✓ Installation successful"
+              else
+                echo "✗ Still not found after installation"
+                exit 1
+              fi
+            fi
           fi
-          echo "native_modules.gradle found successfully"
         working-directory: telon-gateway-app
       
       - name: Build Android Bundle
