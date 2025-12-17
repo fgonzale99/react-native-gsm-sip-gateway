@@ -62,12 +62,8 @@ jobs:
       #  with:
       #    node-version: 12
       #    #node-version: 18.19.0
-      - name: Setup Android SDK (API Level 19)
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v2
-        with:
-          api-level: 19
-          ndk: true
-          build-tools: 25.2.5
       #    build-tools: 30.0.3
       #- name: Install NDK (if required)
       #  run: |
