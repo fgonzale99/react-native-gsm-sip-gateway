@@ -57,11 +57,15 @@ jobs:
         run: |
           sed -i 's/"react-native": "0.80.0"/"react-native": "0.72.9"/' package.json
         working-directory: telon-gateway-app
-      - name: Install Dependencies
-        run: npm install
+      - name: Patch package.json for React 18
+        run: |
+          sed -i 's/"react": "19.1.0"/"react": "18.2.0"/' package.json
+        working-directory: telon-gateway-app
+      - name: Install Dependencies with legacy peer deps
+        run: npm install --legacy-peer-deps
         working-directory: telon-gateway-app
       - name: Install Babel Flow preset
-        run: npm install --save-dev @babel/preset-flow
+        run: npm install --save-dev @babel/preset-flow --legacy-peer-deps
         working-directory: telon-gateway-app
       - name: Create babel.config.js for Flow
         run: |
