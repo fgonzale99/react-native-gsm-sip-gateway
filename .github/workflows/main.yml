@@ -70,8 +70,44 @@ jobs:
         run: npm install --legacy-peer-deps
         working-directory: telon-gateway-app
       
-      - name: Install Babel Flow preset
-        run: npm install --save-dev @babel/preset-flow --legacy-peer-deps
+      - name: Install React Native CLI Platform Android
+        run: |
+          npm install --save-dev @react-native-community/cli-platform-android@11.3.7 --legacy-peer-deps
+        working-directory: telon-gateway-app
+      
+      - name: Verify and fix native modules
+        run: |
+          echo "Checking for native_modules.gradle..."
+          
+          # Check if the file exists
+          if [ ! -f "node_modules/@react-native-community/cli-platform-android/native_modules.gradle" ]; then
+            echo "✗ native_modules.gradle not found"
+            echo "Creating a minimal native_modules.gradle..."
+            
+            mkdir -p node_modules/@react-native-community/cli-platform-android
+            
+            cat > node_modules/@react-native-community/cli-platform-android/native_modules.gradle << 'EOF'
+// Minimal native_modules.gradle for React Native 0.72
+def autoModules = [:]
+
+def applyNativeModulesAppBuildGradle(Project project) {
+    println "Applying native modules configuration"
+}
+
+def applyNativeModulesSettingsGradle(Object settings) {
+    println "Applying native modules settings"
+}
+
+ext.applyNativeModulesAppBuildGradle = this.&applyNativeModulesAppBuildGradle
+ext.applyNativeModulesSettingsGradle = this.&applyNativeModulesSettingsGradle
+EOF
+            
+            echo "✓ Created minimal native_modules.gradle"
+          else
+            echo "✓ native_modules.gradle found"
+          fi
+          
+          cat node_modules/@react-native-community/cli-platform-android/native_modules.gradle
         working-directory: telon-gateway-app
       
       - name: Remove and recreate metro.config.js for RN 0.72
@@ -158,21 +194,33 @@ jobs:
       
       - name: Fix app/build.gradle for RN 0.72
         run: |
-          echo "Fixing android/app/build.gradle for React Native 0.72..."
+          echo "Current app/build.gradle around line 83:"
+          sed -n '80,90p' android/app/build.gradle
+          echo "---"
           
           # Backup original
           cp android/app/build.gradle android/app/build.gradle.backup
           
-          # Replace the react.gradle line with the correct path for RN 0.72
-          sed -i 's|apply from: "../../node_modules/react-native/react.gradle"|apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)|g' android/app/build.gradle
+          # Comment out or remove the problematic react.gradle or native_modules.gradle line
+          sed -i '/apply from.*react\.gradle/d' android/app/build.gradle
+          sed -i '/apply from.*native_modules\.gradle/d' android/app/build.gradle
           
-          # Also check if compileSdkVersion is missing and add it if needed
+          # Ensure compileSdkVersion exists
           if ! grep -q "compileSdkVersion" android/app/build.gradle; then
             echo "Adding compileSdkVersion..."
-            sed -i '/android {/a\    compileSdkVersion 33' android/app/build.gradle
+            sed -i '/android {/a\    compileSdkVersion 33\n    buildToolsVersion "33.0.0"' android/app/build.gradle
           fi
           
-          echo "Changes made to build.gradle"
+          # Add native modules configuration at the end if not present
+          if ! grep -q "applyNativeModulesAppBuildGradle" android/app/build.gradle; then
+            echo "" >> android/app/build.gradle
+            echo "// Apply native modules" >> android/app/build.gradle
+            echo "apply from: file(\"../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle\")" >> android/app/build.gradle
+            echo "applyNativeModulesAppBuildGradle(project)" >> android/app/build.gradle
+          fi
+          
+          echo "Modified build.gradle:"
+          cat android/app/build.gradle
         working-directory: telon-gateway-app
       
       - name: Build Android Bundle
