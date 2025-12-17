@@ -41,7 +41,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18  # ¡CAMBIO AQUÍ!
+          node-version: 18
       - name: Set up OpenJDK 8
         run: |
           sudo apt update
@@ -89,6 +89,10 @@ jobs:
           ls -la $NDK_HOME
       - name: Navigate to Project Root
         run: cd $GITHUB_WORKSPACE
+        working-directory: telon-gateway-app
+      - name: Clone missing dependency
+        run: |
+          git clone https://github.com/telon-org/react-native-replace-dialer ../react-native-replace-dialer || echo "Repository not found, will try to install without it"
         working-directory: telon-gateway-app
       - name: Install Dependencies
         run: npm install
