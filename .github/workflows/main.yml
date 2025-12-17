@@ -9,11 +9,6 @@ jobs:
   build_android:
     runs-on: ubuntu-latest
     
-    env:
-      JAVA_HOME: /usr/lib/jvm/java-17-openjdk-amd64
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-    
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -31,228 +26,37 @@ jobs:
       
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          api-level: 33
-          build-tools: 33.0.0
-          ndk: 21.4.7075529
-          cmake: 3.22.1
       
-      - name: Accept Android Licenses
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-      
-      - name: Clone missing dependency
-        run: |
-          cd $GITHUB_WORKSPACE
-          if [ ! -d "react-native-replace-dialer" ]; then
-            git clone https://github.com/telon-org/react-native-replace-dialer || echo "Repository not found, will try to install without it"
-          fi
-      
-      - name: Patch package.json for React Native 0.72
+      - name: Clean and prepare project
         run: |
           cd telon-gateway-app
-          # Backup original package.json
-          cp package.json package.json.backup
+          # Remove lock file and node_modules
+          rm -rf node_modules package-lock.json
           
-          # Update React Native and React versions
+          # Update package.json for RN 0.72
           sed -i 's/"react-native": "0.80.0"/"react-native": "0.72.9"/' package.json
           sed -i 's/"react": "19.1.0"/"react": "18.2.0"/' package.json
           
-          # Add missing dependencies for React Native 0.72
-          echo "Adding missing dependencies for React Native 0.72..."
-          
-          # Check if jsc-android is needed
-          if ! grep -q "jsc-android" package.json; then
-            echo "Adding jsc-android..."
-            npm install jsc-android@250231.0.0 --save --legacy-peer-deps
-          fi
-          
-          # Check if @react-native-community/cli is needed
-          if ! grep -q "@react-native-community/cli" package.json; then
-            echo "Adding @react-native-community/cli..."
-            npm install @react-native-community/cli@11.3.10 --save-dev --legacy-peer-deps
-          fi
-      
-      - name: Delete package-lock.json and node_modules
-        run: |
-          cd telon-gateway-app
-          rm -rf node_modules package-lock.json
-          echo "Cleaned node_modules and package-lock.json"
-      
-      - name: Install Dependencies with npm install
-        run: |
-          cd telon-gateway-app
+          # Install dependencies
           npm install --legacy-peer-deps
-          echo "Dependencies installed successfully"
-      
-      - name: Install React Native CLI Platform Android
-        run: |
-          cd telon-gateway-app
-          npm install --save-dev @react-native-community/cli-platform-android@11.3.7 --legacy-peer-deps
-      
-      - name: Install additional required packages for RN 0.72
-        run: |
-          cd telon-gateway-app
-          # Install packages that are missing for RN 0.72
-          npm install --save-dev \
-            @react-native-community/cli@11.3.10 \
-            @react-native-community/cli-platform-ios@11.3.10 \
-            @react-native-community/cli-tools@11.3.10 \
-            @react-native-community/cli-plugin-metro@11.3.10 \
-            --legacy-peer-deps
-          
-          # Install metro packages for RN 0.72
-          npm install --save-dev \
-            metro@0.76.8 \
-            metro-config@0.76.8 \
-            metro-core@0.76.8 \
-            metro-react-native-babel-preset@0.76.8 \
-            metro-react-native-babel-transformer@0.76.8 \
-            --legacy-peer-deps
       
       - name: Create local.properties
         run: |
           cd telon-gateway-app/android
           echo "sdk.dir=$ANDROID_HOME" > local.properties
-          echo "ndk.dir=$ANDROID_HOME/ndk/21.4.7075529" >> local.properties
-      
-      - name: Create metro.config.js for RN 0.72
-        run: |
-          cd telon-gateway-app
-          cat > metro.config.js << 'EOF'
-          /**
-           * Metro configuration for React Native 0.72
-           */
-          const { getDefaultConfig } = require('metro-config');
-          
-          module.exports = (async () => {
-            const {
-              resolver: { sourceExts, assetExts }
-            } = await getDefaultConfig();
-            
-            return {
-              transformer: {
-                babelTransformerPath: require.resolve('react-native-svg-transformer'),
-                getTransformOptions: async () => ({
-                  transform: {
-                    experimentalImportSupport: false,
-                    inlineRequires: true,
-                  },
-                }),
-              },
-              resolver: {
-                assetExts: assetExts.filter(ext => ext !== 'svg'),
-                sourceExts: [...sourceExts, 'svg'],
-              },
-            };
-          })();
-          EOF
-      
-      - name: Create babel.config.js
-        run: |
-          cd telon-gateway-app
-          cat > babel.config.js << 'EOF'
-          module.exports = {
-            presets: ['module:metro-react-native-babel-preset'],
-          };
-          EOF
-      
-      - name: Fix settings.gradle
-        run: |
-          cd telon-gateway-app
-          if [ -f "android/settings.gradle" ]; then
-            # Create settings.gradle if it doesn't exist
-            if [ ! -s "android/settings.gradle" ]; then
-              cat > android/settings.gradle << 'EOF'
-          rootProject.name = 'TelonGatewayApp'
-          apply from: file("../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesSettingsGradle(settings)
-          include ':app'
-          EOF
-            else
-              # Ensure native_modules.gradle is referenced
-              if ! grep -q "applyNativeModulesSettingsGradle" android/settings.gradle; then
-                echo "apply from: file(\"../node_modules/@react-native-community/cli-platform-android/native_modules.gradle\"); applyNativeModulesSettingsGradle(settings)" >> android/settings.gradle
-              fi
-            fi
-          else
-            mkdir -p android
-            cat > android/settings.gradle << 'EOF'
-          rootProject.name = 'TelonGatewayApp'
-          apply from: file("../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesSettingsGradle(settings)
-          include ':app'
-          EOF
-          fi
-      
-      - name: Fix app/build.gradle for RN 0.72
-        run: |
-          cd telon-gateway-app
-          if [ -f "android/app/build.gradle" ]; then
-            # Backup original
-            cp android/app/build.gradle android/app/build.gradle.backup
-            
-            # Ensure compileSdkVersion and buildToolsVersion
-            if ! grep -q "compileSdkVersion" android/app/build.gradle; then
-              sed -i '/android {/a\    compileSdkVersion 33' android/app/build.gradle
-            else
-              sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 33/' android/app/build.gradle
-            fi
-            
-            if ! grep -q "buildToolsVersion" android/app/build.gradle; then
-              sed -i '/compileSdkVersion/a\    buildToolsVersion "33.0.0"' android/app/build.gradle
-            else
-              sed -i 's/buildToolsVersion "[^"]*"/buildToolsVersion "33.0.0"/' android/app/build.gradle
-            fi
-            
-            # Ensure targetSdkVersion
-            if ! grep -q "targetSdkVersion" android/app/build.gradle; then
-              sed -i '/buildToolsVersion/a\    defaultConfig {\n        targetSdkVersion 33\n    }' android/app/build.gradle
-            else
-              sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 33/' android/app/build.gradle
-            fi
-            
-            # Remove any existing apply from lines for react.gradle or native_modules.gradle
-            sed -i '/apply from.*react\.gradle/d' android/app/build.gradle
-            sed -i '/apply from.*native_modules\.gradle/d' android/app/build.gradle
-            sed -i '/applyNativeModulesAppBuildGradle/d' android/app/build.gradle
-            
-            # Add native_modules.gradle at the end
-            echo "" >> android/app/build.gradle
-            echo "apply from: file(\"../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle\")" >> android/app/build.gradle
-            echo "applyNativeModulesAppBuildGradle(project)" >> android/app/build.gradle
-          fi
       
       - name: Make gradlew executable
         run: |
           cd telon-gateway-app/android
           chmod +x gradlew
       
-      - name: Clean Gradle
-        run: |
-          cd telon-gateway-app/android
-          ./gradlew clean || echo "Gradle clean completed (some warnings may appear)"
-      
       - name: Build Android Release Bundle
         run: |
           cd telon-gateway-app/android
           ./gradlew bundleRelease
-        env:
-          ORG_GRADLE_PROJECT_keystore_password: ${{ secrets.KEYSTORE_PASSWORD }}
       
       - name: Upload Bundle Artifact
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: android-bundle
           path: telon-gateway-app/android/app/build/outputs/bundle/release/*.aab
-          retention-days: 7
-      
-      - name: Upload Build Logs on Failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: |
-            telon-gateway-app/android/**/build/reports/**/*.html
-            telon-gateway-app/android/**/build/outputs/**/*.txt
-            telon-gateway-app/npm-debug.log
-          retention-days: 7
