@@ -74,6 +74,34 @@ jobs:
         run: npm install --save-dev @babel/preset-flow --legacy-peer-deps
         working-directory: telon-gateway-app
       
+      - name: Remove and recreate metro.config.js for RN 0.72
+        run: |
+          # Remove existing metro.config.js if it exists
+          rm -f metro.config.js
+          
+          # Create new one compatible with RN 0.72
+          cat > metro.config.js << 'EOF'
+          /**
+           * Metro configuration for React Native 0.72
+           * https://github.com/facebook/react-native
+           */
+
+          module.exports = {
+            transformer: {
+              getTransformOptions: async () => ({
+                transform: {
+                  experimentalImportSupport: false,
+                  inlineRequires: true,
+                },
+              }),
+            },
+          };
+          EOF
+          
+          echo "New metro.config.js created:"
+          cat metro.config.js
+        working-directory: telon-gateway-app
+      
       - name: Create babel.config.js
         run: |
           cat > babel.config.js << 'EOF'
@@ -83,17 +111,6 @@ jobs:
               '@babel/preset-flow'
             ]
           };
-          EOF
-        working-directory: telon-gateway-app
-      
-      - name: Create metro.config.js
-        run: |
-          cat > metro.config.js << 'EOF'
-          const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
-
-          const config = {};
-
-          module.exports = mergeConfig(getDefaultConfig(__dirname), config);
           EOF
         working-directory: telon-gateway-app
       
