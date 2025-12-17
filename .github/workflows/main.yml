@@ -156,6 +156,25 @@ jobs:
           fi
         working-directory: telon-gateway-app
       
+      - name: Fix app/build.gradle for RN 0.72
+        run: |
+          echo "Fixing android/app/build.gradle for React Native 0.72..."
+          
+          # Backup original
+          cp android/app/build.gradle android/app/build.gradle.backup
+          
+          # Replace the react.gradle line with the correct path for RN 0.72
+          sed -i 's|apply from: "../../node_modules/react-native/react.gradle"|apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)|g' android/app/build.gradle
+          
+          # Also check if compileSdkVersion is missing and add it if needed
+          if ! grep -q "compileSdkVersion" android/app/build.gradle; then
+            echo "Adding compileSdkVersion..."
+            sed -i '/android {/a\    compileSdkVersion 33' android/app/build.gradle
+          fi
+          
+          echo "Changes made to build.gradle"
+        working-directory: telon-gateway-app
+      
       - name: Build Android Bundle
         run: |
           mkdir -p android/app/build/intermediates/assets/release/
